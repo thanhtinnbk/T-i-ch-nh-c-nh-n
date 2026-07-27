@@ -171,7 +171,7 @@ tabs = st.tabs(
 )
 
 # ---------------------------------------------------------
-# TAB 1: TỔNG QUAN & BÁO CÁO (CÓ XUẤT FILE EXCEL / CSV)
+# TAB 1: TỔNG QUAN & BÁO CÁO
 # ---------------------------------------------------------
 with tabs[0]:
     c_filter1, c_filter2 = st.columns([1, 1])
@@ -249,18 +249,14 @@ with tabs[0]:
             fig_bar.update_layout(barmode="group", margin=dict(t=20, b=20, l=20, r=20))
             st.plotly_chart(fig_bar, use_container_width=True)
 
-        # HÀNG HIỂN THỊ LỊCH SỬ & NÚT XUẤT FILE
         col_t1, col_t2 = st.columns([2, 1])
         with col_t1:
             st.markdown("##### 📜 Sổ nhật ký giao dịch tháng này")
         with col_t2:
-            # Tạo dữ liệu xuất file CSV / Excel
             export_df = df_month[["transaction_date", "type", "category_name", "amount", "note"]].sort_values(
                 by="transaction_date", ascending=False
             )
             export_df.columns = ["Ngày Giao Dịch", "Loại", "Danh Mục", "Số Tiền (VNĐ)", "Ghi Chú"]
-
-            # Chuyển đổi thành CSV với font UTF-8 hỗ trợ tiếng Việt
             csv_data = export_df.to_csv(index=False, encoding="utf-8-sig")
 
             st.download_button(
@@ -530,7 +526,7 @@ with tabs[4]:
                     st.rerun()
 
 # ---------------------------------------------------------
-# TAB 6: QUẢN LÝ / SỬA / XÓA DANH MỤC
+# TAB 6: QUẢN LÝ / SỬA / XÓA DANH MỤC (NÂNG CẤP TỰ ĐỘNG CẤP ID)
 # ---------------------------------------------------------
 with tabs[5]:
     st.subheader("⚙️ Quản Lý & Chỉnh Sửa Danh Mục")
@@ -544,15 +540,34 @@ with tabs[5]:
 
             if st.form_submit_button("➕ Thêm Danh Mục", use_container_width=True):
                 if cat_name.strip():
-                    supabase.table("categories").insert({"name": cat_name.strip(), "type": cat_type}).execute()
-                    st.success(f"Đã thêm danh mục: **{cat_name}**")
-                    st.rerun()
+                    try:
+                        # Tự động tính ID mới = MAX(id) + 1 để tránh phụ thuộc vào CSDL sequence
+                        next_id = 1
+                        if not categories_df.empty and "id" in categories_df.columns:
+                            next_id = int(categories_df["id"].max()) + 1
+
+                        insert_data = {"id": next_id, "name": cat_name.strip(), "type": cat_type}
+                        supabase.table("categories").insert(insert_data).execute()
+                        st.success(f"🎉 Đã thêm danh mục thành công: **{cat_name}**")
+                        st.rerun()
+                    except Exception as e:
+                        # Fallback thử gửi không kèm ID nếu CSDL đã tự sinh
+                        try:
+                            supabase.table("categories").insert(
+                                {"name": cat_name.strip(), "type": cat_type}
+                            ).execute()
+                            st.success(f"🎉 Đã thêm danh mục thành công: **{cat_name}**")
+                            st.rerun()
+                        except Exception as ex:
+                            st.error(f"Lỗi khi thêm danh mục: {ex}")
 
     with col_c2:
         st.markdown("##### ✏️ Đổi Tên / Phân Loại Hoặc Xóa Danh Mục")
         if not categories_df.empty:
             cat_edit_options = {row["id"]: f"{row['name']} ({row['type']})" for _, row in categories_df.iterrows()}
-            selected_cat_id = st.selectbox("Chọn danh mục cần sửa", list(cat_edit_options.keys()), format_func=lambda x: cat_edit_options[x])
+            selected_cat_id = st.selectbox(
+                "Chọn danh mục cần sửa", list(cat_edit_options.keys()), format_func=lambda x: cat_edit_options[x]
+            )
 
             cat_to_edit = categories_df[categories_df["id"] == selected_cat_id].iloc[0]
 
